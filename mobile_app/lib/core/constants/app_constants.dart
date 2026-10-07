@@ -7,7 +7,10 @@ class AppConstants {
   /// flutter build apk --dart-define=API_BASE_URL=https://example.com/api
   static const apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
+    //Sử dụng cho render
     defaultValue: 'https://mobile-app-u103.onrender.com/api',
+    //Sử dụng cho local
+    //defaultValue: 'http://localhost:3000/api',
   );
 
   /// Socket.IO của backend nằm ở namespace `/realtime`.

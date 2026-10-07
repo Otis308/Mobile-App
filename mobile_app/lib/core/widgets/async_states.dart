@@ -39,13 +39,13 @@ void showSnack(BuildContext context, String message) {
 const taskStatusLabels = {
   'todo': 'Cần làm',
   'doing': 'Đang làm',
-  'review': 'Đang review',
+  'review': 'Đang duyệt',
   'done': 'Hoàn tất',
 };
 
 const taskPriorityLabels = {
   'low': 'Thấp',
-  'medium': 'Vừa',
+  'medium': 'Trung bình',
   'high': 'Cao',
   'urgent': 'Khẩn',
 };

@@ -7,14 +7,13 @@ Việc làm (idempotent - chạy nhiều lần vẫn an toàn):
   1. Thêm quyền INTERNET vào AndroidManifest.xml chính. Template của Flutter chỉ
      bật INTERNET cho bản debug/profile, nên APK release không gọi được API.
   2. Cho phép http thường (usesCleartextTraffic) để test với backend chạy ở LAN.
-  3. Đặt tên hiển thị của app là "WorkFlow".
-  4. Nâng minSdk tối thiểu lên 23 (flutter_secure_storage yêu cầu).
+  3. Nâng minSdk tối thiểu lên 23 (flutter_secure_storage yêu cầu).
 """
 import pathlib
 import re
 import sys
 
-APP_LABEL = "WorkFlow"
+APP_LABEL = "TEAMWORK"
 MIN_SDK = 23
 
 

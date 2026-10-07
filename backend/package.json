@@ -12,6 +12,7 @@
     "test": "jest --runInBand"
   },
   "dependencies": {
+    "@nestjs-modules/mailer": "^3.0.2",
     "@nestjs/common": "^12.1.2",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^12.1.2",
@@ -25,6 +26,8 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "mongoose": "^9.10.3",
+    "nodemailer": "^10.0.15",
+    "otp-generator": "^4.0.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "socket.io": "^4.8.4"
@@ -38,6 +41,8 @@
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.10.0",
+    "@types/nodemailer": "^8.0.2",
+    "@types/otp-generator": "^4.0.2",
     "eslint": "^9.39.1",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.5",

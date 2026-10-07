@@ -56,9 +56,12 @@ class AuthController extends Notifier<AuthState> {
   }
 
   Future<void> register(
-    String email,
-    String username,
     String fullName,
+    String username,
+    String phone,
+    String email,
+    String dob,
+    String gender,
     String password,
   ) async {
     if (email.isEmpty || username.isEmpty || fullName.isEmpty || password.isEmpty) {
@@ -67,7 +70,15 @@ class AuthController extends Notifier<AuthState> {
     }
     state = const AuthState(loading: true);
     try {
-      final r = await _repo.register(email, username, fullName, password);
+      final r = await _repo.register(
+        fullName,
+        username,
+        phone,
+        email,
+        dob,
+        gender,
+        password,
+      );
       state = AuthState(user: r.user);
     } catch (e) {
       state = AuthState(error: errorMessage(e));
@@ -89,6 +100,34 @@ class AuthController extends Notifier<AuthState> {
   Future<void> logout() async {
     await _repo.logout();
     state = const AuthState();
+  }
+
+  // Xử lý luồng Quên mật khẩu (Trả về chuỗi lỗi, nếu null là thành công)
+  Future<String?> requestOtp(String email) async {
+    try {
+      await _repo.requestOtp(email);
+      return null;
+    } catch (e) {
+      return errorMessage(e);
+    }
+  }
+
+  Future<String?> verifyOtp(String email, String otp) async {
+    try {
+      await _repo.verifyOtp(email, otp);
+      return null;
+    } catch (e) {
+      return errorMessage(e);
+    }
+  }
+
+  Future<String?> resetPassword(String email, String otp, String newPassword) async {
+    try {
+      await _repo.resetPassword(email, otp, newPassword);
+      return null;
+    } catch (e) {
+      return errorMessage(e);
+    }
   }
 }
 

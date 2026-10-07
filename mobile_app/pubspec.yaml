@@ -1,5 +1,5 @@
-name: workflow_mobile
-description: Ứng dụng quản lý công việc và dự án nhóm bằng Flutter.
+name: teamwork
+description: Ứng dụng quản lý công việc và dự án nhóm.
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -24,3 +24,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/

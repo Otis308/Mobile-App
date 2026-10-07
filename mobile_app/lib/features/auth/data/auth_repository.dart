@@ -13,6 +13,7 @@ class AuthRepository {
   final ApiClient api;
   final TokenStorage storage;
 
+  // Đã sửa: Constructor chỉ nhận 2 tham số (khớp 100% với auth_controller.dart)
   AuthRepository(this.api, this.storage);
 
   Future<AuthResult> login(String login, String password) async {
@@ -21,18 +22,26 @@ class AuthRepository {
   }
 
   Future<AuthResult> register(
-    String email,
-    String username,
     String fullName,
+    String username,
+    String phone,
+    String email,
+    String dob,
+    String gender,
     String password,
   ) async {
-    final r = await api.dio.post('/auth/register', data: {
-      'email': email,
-      'username': username,
+    final res = await api.dio.post('/auth/register', data: {
       'fullName': fullName,
+      'username': username,
+      'phone': phone,
+      'email': email,
+      'dob': dob,
+      'gender': gender,
       'password': password,
     });
-    return _handle(r.data);
+    
+    // Gọi thẳng hàm _handle để xử lý parse dữ liệu và lưu token
+    return _handle(res.data);
   }
 
   Future<UserModel> me() async {
@@ -40,12 +49,31 @@ class AuthRepository {
     return UserModel.fromJson(asMap(r.data));
   }
 
-  Future<void> logout() => storage.clear();
+  Future<void> logout() async {
+    await storage.clear();
+  }
 
   Future<AuthResult> _handle(dynamic raw) async {
     final data = asMap(raw);
     final token = data['accessToken'].toString();
     await storage.save(token);
     return AuthResult(token, UserModel.fromJson(asMap(data['user'])));
+  }
+
+  //Hàm API Quên mật khẩu
+  Future<void> requestOtp(String email) async {
+    await api.dio.post('/auth/forgot-password', data: {'email': email});
+  }
+
+  Future<void> verifyOtp(String email, String otp) async {
+    await api.dio.post('/auth/verify-otp', data: {'email': email, 'otp': otp});
+  }
+
+  Future<void> resetPassword(String email, String otp, String newPassword) async {
+    await api.dio.post('/auth/reset-password', data: {
+      'email': email,
+      'otp': otp,
+      'newPassword': newPassword,
+    });
   }
 }

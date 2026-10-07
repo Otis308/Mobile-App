@@ -1,7 +1,33 @@
-import { IsEmail, IsOptional, IsString, Length, Matches } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+
 export class RegisterDto {
-  @IsEmail() email!: string;
-  @IsString() @Length(3, 30) @Matches(/^[a-zA-Z0-9_.-]+$/) username!: string;
-  @IsString() @Length(2, 80) fullName!: string;
-  @IsString() @Length(8, 72) password!: string;
+  @IsEmail({}, { message: 'Email không đúng định dạng' })
+  @IsNotEmpty({ message: 'Email không được để trống' })
+  email: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Username không được để trống' })
+  @MinLength(5, { message: 'Username phải lớn hơn 4 ký tự' })
+  username: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Họ và tên không được để trống' })
+  fullName: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Mật khẩu không được để trống' })
+  @MinLength(8, { message: 'Mật khẩu phải từ 8 ký tự' })
+  password: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Số điện thoại không được để trống' })
+  phone: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Ngày sinh không được để trống' })
+  dob: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Giới tính không được để trống' })
+  gender: string;
 }
