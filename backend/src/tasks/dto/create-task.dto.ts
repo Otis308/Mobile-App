@@ -1,0 +1,2 @@
+import { IsArray, IsDateString, IsEnum, IsMongoId, IsOptional, IsString, Length } from 'class-validator';
+export class CreateTaskDto { @IsString() @Length(2, 180) title!: string; @IsOptional() @IsString() @Length(0, 3000) description?: string; @IsOptional() @IsEnum(['low','medium','high','urgent']) priority?: 'low'|'medium'|'high'|'urgent'; @IsOptional() @IsEnum(['todo','doing','review','done']) status?: 'todo'|'doing'|'review'|'done'; @IsOptional() @IsMongoId() assigneeId?: string; @IsOptional() @IsDateString() dueDate?: string; @IsOptional() @IsArray() labels?: string[]; }

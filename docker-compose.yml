@@ -1,0 +1,19 @@
+services:
+  mongodb:
+    image: mongo:8
+    container_name: workflow-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: workflow_app
+    volumes:
+      - workflow_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  workflow_mongo_data:

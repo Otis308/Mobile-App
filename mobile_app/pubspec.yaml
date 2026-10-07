@@ -1,0 +1,26 @@
+name: workflow_mobile
+description: Ứng dụng quản lý công việc và dự án nhóm bằng Flutter.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  dio: ^5.8.0
+  flutter_riverpod: ^2.6.1
+  flutter_secure_storage: ^9.2.2
+  image_picker: ^1.1.2
+  intl: '>=0.19.0 <0.21.0'
+  socket_io_client: ^2.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
