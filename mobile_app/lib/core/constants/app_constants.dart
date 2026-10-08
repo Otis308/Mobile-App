@@ -8,9 +8,9 @@ class AppConstants {
   static const apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     //Sử dụng cho render
-    //defaultValue: 'https://mobile-app-u103.onrender.com/api',
+    defaultValue: 'https://mobile-app-u103.onrender.com/api',
     //Sử dụng cho local
-    defaultValue: 'http://localhost:3000/api',
+    //defaultValue: 'http://localhost:3000/api',
   );
 
   /// Socket.IO của backend nằm ở namespace `/realtime`.
