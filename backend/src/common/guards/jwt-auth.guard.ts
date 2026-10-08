@@ -12,14 +12,19 @@ export class JwtAuthGuard implements CanActivate {
     const header = request.headers.authorization as string | undefined;
     if (!header?.startsWith('Bearer ')) throw new UnauthorizedException('Thiếu access token');
     const token = header.slice(7);
+
+    let payload: JwtPayload;
     try {
-      const payload = await this.jwtService.verifyAsync<JwtPayload>(token);
-      const user = await this.usersService.findPublicById(payload.sub);
-      if (!user) throw new UnauthorizedException('Người dùng không còn tồn tại');
-      request.user = user;
-      return true;
+      payload = await this.jwtService.verifyAsync<JwtPayload>(token);
     } catch {
       throw new UnauthorizedException('Access token không hợp lệ hoặc đã hết hạn');
     }
+
+    const user = await this.usersService.findPublicById(payload.sub);
+    if (!user) throw new UnauthorizedException('Người dùng không còn tồn tại');
+
+    // Chuẩn hóa _id thành chuỗi: toàn bộ service so sánh userId bằng chuỗi
+    request.user = { ...user, _id: user._id.toString() };
+    return true;
   }
 }
