@@ -12,6 +12,7 @@ import '../../../core/widgets/labeled_dropdown.dart';
 import '../../projects/presentation/project_providers.dart';
 import '../domain/entities/task.dart';
 import 'task_providers.dart';
+import 'edit_task_dialog.dart';
 
 class TaskDetailPage extends ConsumerStatefulWidget {
   final String taskId;
@@ -27,7 +28,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
   late final SocketService _socket;
   StreamSubscription<RealtimeEvent>? _sub;
   bool _sending = false;
-
+  String? _joined;
   @override
   void initState() {
     super.initState();
@@ -50,6 +51,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
     _sub?.cancel();
     _comment.dispose();
     super.dispose();
+    final id = _joined;
+    if (id != null) _socket.leaveProject(id);
   }
 
   Future<void> _send() async {
@@ -89,12 +92,42 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
     }
   }
 
+  Future<void> _clearDate(TaskModel t) async {
+    try {
+      await ref.read(tasksRepositoryProvider).update(t.id, {'dueDate': null});
+      ref.invalidate(taskProvider(widget.taskId));
+      if (mounted) showSnack(context, 'Đã xóa hạn chót');
+    } catch (e) {
+      if (mounted) showSnack(context, errorMessage(e));
+    }
+  }
+
   Future<void> _changeStatus(TaskModel t, String status) async {
     if (status == t.status) return;
     try {
       // order lớn để thẻ xuống cuối cột đích.
       await ref.read(tasksRepositoryProvider).move(t.id, status, 9999);
       ref.invalidate(taskProvider(widget.taskId));
+    } catch (e) {
+      if (mounted) showSnack(context, errorMessage(e));
+    }
+  }
+
+  Future<void> _edit(TaskModel t) async {
+    List<Map<String, dynamic>> members = const [];
+    try {
+      members = await ref.read(projectMembersProvider(t.projectId).future);
+    } catch (_) {}
+    if (!mounted) return;
+    final data = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => EditTaskDialog(task: t, members: members),
+    );
+    if (data == null) return;
+    try {
+      await ref.read(tasksRepositoryProvider).update(t.id, data);
+      ref.invalidate(taskProvider(widget.taskId));
+      if (mounted) showSnack(context, 'Đã cập nhật công việc');
     } catch (e) {
       if (mounted) showSnack(context, errorMessage(e));
     }
@@ -131,6 +164,12 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
         actions: [
           if (task.hasValue)
             IconButton(
+              tooltip: 'Sửa',
+              onPressed: () => _edit(task.requireValue),
+              icon: const Icon(Icons.edit_outlined),
+            ),
+          if (task.hasValue)
+            IconButton(
               tooltip: 'Xóa',
               onPressed: () => _delete(task.requireValue),
               icon: const Icon(Icons.delete_outline),
@@ -148,6 +187,10 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
   Widget _content(BuildContext context, TaskModel t) {
     final textTheme = Theme.of(context).textTheme;
     final due = t.due;
+    final members = ref.watch(projectMembersProvider(t.projectId)).valueOrNull ??
+      const <Map<String, dynamic>>[];
+    final assignee =
+      members.where((m) => m['_id'].toString() == t.assigneeId).firstOrNull;
 
     return ListView(
       padding: const EdgeInsets.all(18),
@@ -156,8 +199,10 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
+          runSpacing: 4,
           children: [
             Chip(label: Text('Ưu tiên: ${taskPriorityLabels[t.priority] ?? t.priority}')),
+            for (final l in t.labels) Chip(label: Text('#$l')),
           ],
         ),
         const SizedBox(height: 12),
@@ -177,9 +222,22 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
         const SizedBox(height: 12),
         ListTile(
           contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.person_outline),
+          title: const Text('Người thực hiện'),
+          subtitle: Text(assignee == null ? 'Chưa giao' : (assignee['fullName'] ?? '').toString()),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.event_outlined),
           title: const Text('Hạn chót'),
           subtitle: Text(due == null ? 'Chưa đặt (chạm để chọn)' : DateFormat('dd/MM/yyyy HH:mm').format(due)),
+          trailing: due == null
+              ? null
+              : IconButton(
+                  tooltip: 'Xóa hạn',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => _clearDate(t),
+                ),
           onTap: () => _pickDate(t),
         ),
         const Divider(height: 28),

@@ -20,4 +20,7 @@ class DashboardRepository {
   Future<void> markRead(String id) async {
     await api.dio.patch('/notifications/$id/read');
   }
+  Future<void> markAllRead() async {
+    await api.dio.patch('/notifications/read-all');
+  }
 }

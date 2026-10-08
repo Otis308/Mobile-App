@@ -1,70 +1,57 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/widgets/async_states.dart';
-import '../../tasks/domain/entities/task.dart';
-import '../../tasks/presentation/task_detail_page.dart';
+import '../../projects/domain/entities/project.dart';
+import '../../projects/presentation/project_providers.dart';
 import '../../tasks/presentation/task_providers.dart';
+import 'deadline_list.dart';
+import 'month_calendar.dart';
+import 'timeline_view.dart';
 
 class CalendarPage extends ConsumerWidget {
   const CalendarPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(allTasksProvider);
+    final tasksAsync = ref.watch(allTasksProvider);
+    final projects = ref.watch(projectsProvider).valueOrNull ?? const <ProjectModel>[];
+    final names = {for (final p in projects) p.id: p.name};
 
-    return RefreshIndicator(
-      onRefresh: () => ref.refresh(allTasksProvider.future),
-      child: data.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(allTasksProvider)),
-        data: (all) {
-          final tasks = [...all]..sort((a, b) {
-              final da = a.due;
-              final db = b.due;
-              if (da == null && db == null) return 0;
-              if (da == null) return 1;
-              if (db == null) return -1;
-              return da.compareTo(db);
-            });
+    Future<void> refresh() => ref.refresh(allTasksProvider.future);
 
-          return ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(20),
-            children: [
-              Text(
-                'Lịch biểu',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+    return DefaultTabController(
+      length: 3,
+      child: Column(
+        children: [
+          const TabBar(
+            tabs: [Tab(text: 'Lịch'), Tab(text: 'Timeline'), Tab(text: 'Deadline')],
+          ),
+          Expanded(
+            child: tasksAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(allTasksProvider)),
+              data: (tasks) => TabBarView(
+                // Tắt vuốt ngang giữa các tab để không tranh với cuộn ngang của Timeline.
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  RefreshIndicator(
+                    onRefresh: refresh,
+                    child: MonthCalendar(tasks: tasks, projectNames: names),
+                  ),
+                  RefreshIndicator(
+                    onRefresh: refresh,
+                    child: TimelineView(tasks: tasks, projects: projects),
+                  ),
+                  RefreshIndicator(
+                    onRefresh: refresh,
+                    child: DeadlineList(tasks: tasks, projectNames: names),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              const Text('Theo dõi các deadline của toàn bộ dự án bạn tham gia.'),
-              const SizedBox(height: 20),
-              if (tasks.isEmpty) const Text('Chưa có công việc nào.'),
-              for (final t in tasks) _tile(context, t),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _tile(BuildContext context, TaskModel t) {
-    final due = t.due;
-    final overdue = due != null && t.status != 'done' && due.isBefore(DateTime.now());
-
-    return Card(
-      child: ListTile(
-        leading: CircleAvatar(child: Icon(t.status == 'done' ? Icons.check : Icons.event)),
-        title: Text(t.title),
-        subtitle: Text(
-          due == null ? 'Chưa có deadline' : DateFormat('dd/MM/yyyy HH:mm').format(due),
-          style: overdue ? TextStyle(color: Theme.of(context).colorScheme.error) : null,
-        ),
-        trailing: Text(taskStatusLabels[t.status] ?? t.status),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => TaskDetailPage(taskId: t.id)),
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }

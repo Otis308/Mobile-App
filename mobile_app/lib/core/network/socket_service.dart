@@ -21,16 +21,19 @@ class SocketService {
     'project.memberAdded',
     'project.memberRemoved',
     'notification.created',
+    'project.deleted',
+    'project.memberUpdated',
+    'presence.update',
   ];
 
   io.Socket? _socket;
-  String? _projectId;
+  final _projects = <String, int>{}; 
   final _controller = StreamController<RealtimeEvent>.broadcast();
 
   Stream<RealtimeEvent> get events => _controller.stream;
 
   void connect(String token) {
-    _socket?.dispose();
+    if (_socket != null) return;       // đã kết nối thì thôi
     final socket = io.io(
       AppConstants.socketUrl,
       io.OptionBuilder()
@@ -40,10 +43,10 @@ class SocketService {
           .build(),
     );
     _socket = socket;
-
     socket.onConnect((_) {
-      final id = _projectId;
-      if (id != null) socket.emit('project.join', {'projectId': id});
+      for (final id in _projects.keys) {
+        socket.emit('project.join', {'projectId': id});
+      }
     });
     for (final name in _eventNames) {
       socket.on(name, (data) {
@@ -54,15 +57,21 @@ class SocketService {
   }
 
   void joinProject(String projectId) {
-    _projectId = projectId;
-    final socket = _socket;
-    if (socket != null && socket.connected) {
-      socket.emit('project.join', {'projectId': projectId});
+    _projects[projectId] = (_projects[projectId] ?? 0) + 1;
+    if (_projects[projectId] == 1 && _socket?.connected == true) {
+      _socket!.emit('project.join', {'projectId': projectId});
     }
   }
 
+  void leaveProject(String id) {
+    final n = (_projects[id] ?? 0) - 1;
+    if (n > 0) { _projects[id] = n; return; }
+    _projects.remove(id);
+    if (_socket?.connected == true) _socket!.emit('project.leave', {'projectId': id});
+  }
+
   void disconnect() {
-    _projectId = null;
+    _projects.clear();
     _socket?.dispose();
     _socket = null;
   }

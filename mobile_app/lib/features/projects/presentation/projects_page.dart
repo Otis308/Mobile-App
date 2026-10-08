@@ -5,6 +5,8 @@ import '../../../core/widgets/async_states.dart';
 import '../../tasks/presentation/kanban_page.dart';
 import 'project_dialogs.dart';
 import 'project_providers.dart';
+import '../../auth/presentation/auth_controller.dart';
+import '../domain/entities/project.dart';
 
 class ProjectsPage extends ConsumerWidget {
   const ProjectsPage({super.key});
@@ -12,6 +14,7 @@ class ProjectsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final projects = ref.watch(projectsProvider);
+    final me = ref.watch(authControllerProvider).user?.id;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -56,7 +59,7 @@ class ProjectsPage extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       isThreeLine: p.description.isNotEmpty,
-                      trailing: const Icon(Icons.chevron_right),
+                      trailing: _menu(context, ref, p, me),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => KanbanPage(projectId: p.id, projectName: p.name),
@@ -69,6 +72,21 @@ class ProjectsPage extends ConsumerWidget {
           },
         ),
       ),
+    );
+  }
+
+  Widget _menu(BuildContext context, WidgetRef ref, ProjectModel p, String? me) {
+    final role = p.roleByUser[me];
+    if (role != 'owner' && role != 'manager') return const Icon(Icons.chevron_right);
+    return PopupMenuButton<String>(
+      onSelected: (v) {
+        if (v == 'edit') showEditProjectDialog(context, ref, p);
+        if (v == 'delete') confirmDeleteProject(context, ref, p);
+      },
+      itemBuilder: (_) => [
+        const PopupMenuItem(value: 'edit', child: Text('Sửa dự án')),
+        if (role == 'owner') const PopupMenuItem(value: 'delete', child: Text('Xóa dự án')),
+      ],
     );
   }
 }

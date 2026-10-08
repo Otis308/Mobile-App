@@ -8,13 +8,35 @@ import { UsersService } from '../users/users.service';
 @Injectable()
 export class DashboardService {
   constructor(@InjectModel(Project.name) private readonly projects:Model<ProjectDocument>, @InjectModel(Task.name) private readonly tasks:Model<TaskDocument>, private readonly notifications:NotificationsService, private readonly users:UsersService){}
-  async summary(userId:string){
-    const uid=new Types.ObjectId(userId); const projects=await this.projects.find({'members.userId':uid}).sort({updatedAt:-1}).limit(6).lean();
-    const start=new Date(); start.setHours(0,0,0,0); const end=new Date(start); end.setDate(end.getDate()+1);
-    const today=await this.tasks.find({projectId:{$in:projects.map((p:any)=>p._id)},dueDate:{$gte:start,$lt:end},status:{$ne:'done'}}).sort({dueDate:1}).lean();
-    const completed=await this.tasks.countDocuments({assigneeId:uid,status:'done',updatedAt:{$gte:new Date(Date.now()-7*24*3600*1000)}});
-    const assigned=await this.tasks.countDocuments({assigneeId:uid});
-    const unread=await this.notifications.unread(userId);
-    return {projects,totalProjects:projects.length,todayTasks:today,unreadNotifications:unread,performance:{completedThisWeek:completed,assignedTotal:assigned,completionRate:assigned?Math.round(completed/assigned*100):0}};
+  async summary(userId: string) {
+    const uid = new Types.ObjectId(userId);
+    const all = await this.projects.find({ 'members.userId': uid }).sort({ updatedAt: -1 }).lean();
+    const projects = all.slice(0, 6); // chỉ hiển thị 6 dự án gần nhất
+
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const end = new Date(start); end.setDate(end.getDate() + 1);
+    const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+
+    const today = await this.tasks.find({
+      projectId: { $in: all.map((p: any) => p._id) },
+      assigneeId: uid,
+      dueDate: { $lt: end },          // hôm nay + quá hạn
+      status: { $ne: 'done' },
+    }).sort({ dueDate: 1 }).lean();
+
+    const completedThisWeek = await this.tasks.countDocuments({
+      assigneeId: uid, status: 'done', completedAt: { $gte: weekAgo },
+    });
+    const assigned = await this.tasks.countDocuments({ assigneeId: uid });
+    const done = await this.tasks.countDocuments({ assigneeId: uid, status: 'done' });
+    const unread = await this.notifications.unread(userId);
+
+    return {
+      projects, totalProjects: all.length, todayTasks: today, unreadNotifications: unread,
+      performance: {
+        completedThisWeek, assignedTotal: assigned,
+        completionRate: assigned ? Math.round((done / assigned) * 100) : 0,
+      },
+    };
   }
 }

@@ -9,6 +9,8 @@ class TaskModel {
   final String? dueDate;
   final List<String> labels;
   final int order;
+  final String? createdAt;  
+  final DateTime? due;
 
   const TaskModel({
     required this.id,
@@ -21,6 +23,8 @@ class TaskModel {
     this.dueDate,
     this.labels = const [],
     this.order = 0,
+    this.createdAt,  
+    this.due,
   });
 
   factory TaskModel.fromJson(Map<String, dynamic> j) => TaskModel(
@@ -36,7 +40,7 @@ class TaskModel {
             ? (j['labels'] as List).map((e) => e.toString()).toList()
             : const [],
         order: j['order'] is num ? (j['order'] as num).toInt() : 0,
+        createdAt: j['createdAt']?.toString(),
       );
-
-  DateTime? get due => dueDate == null ? null : DateTime.tryParse(dueDate!)?.toLocal();
+  DateTime? get created => createdAt == null ? null : DateTime.tryParse(createdAt!)?.toLocal();
 }

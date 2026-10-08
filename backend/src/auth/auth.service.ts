@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
@@ -15,7 +15,7 @@ export class AuthService {
   constructor(
     private readonly users: UsersService, 
     private readonly jwt: JwtService,
-    private readonly mailer: MailerService // Inject MailerService để gửi email
+    private readonly mailer: MailerService
   ) {}
   
   private token(user: any) { return this.jwt.sign({ sub: user._id.toString(), email: user.email, role: user.role }); }
@@ -44,11 +44,23 @@ export class AuthService {
     return { accessToken: this.token(user), user: await this.users.findPublicById(user._id.toString()) };
   }
 
+  // --- HELPER BỔ SUNG: KIỂM TRA OTP ---
+  private async checkOtp(user: any, otp: string) {
+    if (!user.resetPasswordOtp || !user.resetPasswordExpires || new Date() > user.resetPasswordExpires)
+      throw new BadRequestException('Mã OTP đã hết hạn');
+    if ((user.resetOtpAttempts ?? 0) >= 5)
+      throw new BadRequestException('Nhập sai quá nhiều lần, vui lòng yêu cầu mã mới');
+    if (user.resetPasswordOtp !== otp) {
+      await this.users.incOtpAttempts(user._id.toString());
+      throw new BadRequestException('Mã OTP không chính xác');
+    }
+  }
+
   // --- LOGIC QUÊN MẬT KHẨU ---
 
   async forgotPassword(dto: ForgotPasswordDto) {
     const user = await this.users.findByEmailOrUsername(dto.email);
-    if (!user) throw new NotFoundException('Không tìm thấy tài khoản với email này');
+    if (!user) return { message: 'Nếu email tồn tại, mã OTP đã được gửi' };
 
     // KIỂM TRA GIỚI HẠN 3 NGÀY
     if (user.lastPasswordReset) {
@@ -76,23 +88,15 @@ export class AuthService {
 
   async verifyOtp(dto: VerifyOtpDto) {
     const user = await this.users.findByEmailOrUsername(dto.email);
-    if (!user) throw new NotFoundException('Không tìm thấy người dùng');
-    
-    // Kiểm tra OTP và thời gian hết hạn
-    if (user.resetPasswordOtp !== dto.otp) throw new BadRequestException('Mã OTP không chính xác');
-    if (new Date() > new Date(user.resetPasswordExpires!)) throw new BadRequestException('Mã OTP đã hết hạn');
-
+    if (!user) throw new BadRequestException('Mã OTP không chính xác');
+    await this.checkOtp(user, dto.otp);
     return { message: 'Xác thực OTP thành công' };
   }
 
   async resetPassword(dto: ResetPasswordDto) {
     const user = await this.users.findByEmailOrUsername(dto.email);
-    if (!user) throw new NotFoundException('Không tìm thấy người dùng');
-    
-    // Kiểm tra lại lần cuối trước khi đổi pass
-    if (user.resetPasswordOtp !== dto.otp || new Date() > new Date(user.resetPasswordExpires!)) {
-      throw new BadRequestException('Mã OTP không hợp lệ hoặc đã hết hạn');
-    }
+    if (!user) throw new BadRequestException('Mã OTP không chính xác');
+    await this.checkOtp(user, dto.otp);
 
     const passwordHash = await bcrypt.hash(dto.newPassword, 12);
     

@@ -12,6 +12,7 @@ import '../../../core/widgets/labeled_dropdown.dart';
 import '../domain/entities/task.dart';
 import 'task_detail_page.dart';
 import 'task_providers.dart';
+import 'due_utils.dart';
 
 const _statuses = ['todo', 'doing', 'review', 'done'];
 
@@ -95,7 +96,7 @@ class KanbanPage extends ConsumerStatefulWidget {
 class _KanbanPageState extends ConsumerState<KanbanPage> {
   late final SocketService _socket;
   StreamSubscription<RealtimeEvent>? _sub;
-
+  String? _label;
   @override
   void initState() {
     super.initState();
@@ -106,27 +107,19 @@ class _KanbanPageState extends ConsumerState<KanbanPage> {
         ref.invalidate(tasksProvider(widget.projectId));
       }
     });
-    _connect();
-  }
-
-  Future<void> _connect() async {
-    final token = await ref.read(tokenStorageProvider).read();
-    if (!mounted || token == null) return;
-    _socket.connect(token);
     _socket.joinProject(widget.projectId);
   }
 
   @override
   void dispose() {
     _sub?.cancel();
-    _socket.disconnect();
+    _socket.leaveProject(widget.projectId);
     super.dispose();
   }
 
   void _refresh() => ref.invalidate(tasksProvider(widget.projectId));
 
   Future<void> _move(TaskModel task, String status, int order) async {
-    if (task.status == status) return;
     try {
       await ref.read(tasksRepositoryProvider).move(task.id, status, order);
     } catch (e) {
@@ -182,60 +175,89 @@ class _KanbanPageState extends ConsumerState<KanbanPage> {
         child: tasks.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => ErrorView(error: e, onRetry: _refresh),
-          data: (items) => SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.all(12),
-              child: Row(
+          data: (all) {
+            final labels = ({for (final t in all) ...t.labels}.toList()..sort());
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [for (final s in _statuses) _column(context, s, items)],
+                children: [
+                  if (labels.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                      child: Wrap(
+                        spacing: 8,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('Tất cả'),
+                            selected: _label == null,
+                            onSelected: (_) => setState(() => _label = null),
+                          ),
+                          for (final l in labels)
+                            ChoiceChip(
+                              label: Text('#$l'),
+                              selected: _label == l,
+                              onSelected: (_) => setState(() => _label = l),
+                            ),
+                        ],
+                      ),
+                    ),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [for (final s in _statuses) _column(context, s, all)],
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _column(BuildContext context, String status, List<TaskModel> tasks) {
-    final items = tasks.where((t) => t.status == status).toList()
+  Widget _column(BuildContext context, String status, List<TaskModel> all) {
+    // 1. Lấy toàn bộ task thuộc cột này (để tính toán vị trí kéo thả)
+    final full = all.where((t) => t.status == status).toList()
       ..sort((a, b) => a.order.compareTo(b.order));
+      
+    // 2. Lọc task để hiển thị (dựa trên _label đang chọn)
+    final items = _label == null
+        ? full
+        : [for (final t in full) if (t.labels.contains(_label)) t];
 
     return DragTarget<TaskModel>(
-      onWillAcceptWithDetails: (details) => details.data.status != status,
-      onAcceptWithDetails: (details) => _move(details.data, status, items.length),
+      onWillAcceptWithDetails: (_) => true,
+      onAcceptWithDetails: (d) =>
+          _move(d.data, status, full.where((x) => x.id != d.data.id).length),
       builder: (context, candidate, rejected) {
         final highlight = candidate.isNotEmpty;
         final scheme = Theme.of(context).colorScheme;
+        
         return Container(
-          width: 290,
-          constraints: const BoxConstraints(minHeight: 160),
+          width: 280, // Giữ nguyên các thông số trang trí cũ của bạn
           margin: const EdgeInsets.only(right: 12),
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: scheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: highlight ? scheme.primary : Colors.transparent,
-              width: 2,
-            ),
+            color: highlight ? scheme.secondaryContainer : scheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    taskStatusLabels[status] ?? status,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  CircleAvatar(radius: 13, child: Text('${items.length}')),
-                ],
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0, left: 4.0),
+                child: Text(
+                  taskStatusLabels[status] ?? status.toUpperCase(), // Thay bằng biến label của bạn nếu có
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
               ),
               const SizedBox(height: 10),
-              for (final t in items) _draggableCard(context, t),
+              // Truyền danh sách 'full' vào _draggableCard
+              for (final t in items) _draggableCard(context, t, full), 
             ],
           ),
         );
@@ -243,15 +265,35 @@ class _KanbanPageState extends ConsumerState<KanbanPage> {
     );
   }
 
-  Widget _draggableCard(BuildContext context, TaskModel t) {
-    return LongPressDraggable<TaskModel>(
-      data: t,
-      feedback: Material(
-        color: Colors.transparent,
-        child: SizedBox(width: 270, child: _taskTile(context, t, dragging: true)),
+  Widget _draggableCard(BuildContext context, TaskModel t, List<TaskModel> full) {
+    return DragTarget<TaskModel>(
+      onWillAcceptWithDetails: (d) => d.data.id != t.id,
+      onAcceptWithDetails: (d) {
+        final others = full.where((x) => x.id != d.data.id).toList();
+        _move(d.data, t.status, others.indexWhere((x) => x.id == t.id));
+      },
+      builder: (context, candidate, rejected) => Column(
+        children: [
+          if (candidate.isNotEmpty)
+            Container(
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 4),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          LongPressDraggable<TaskModel>(
+            data: t,
+            feedback: Material(
+              color: Colors.transparent,
+              child: SizedBox(width: 270, child: _taskTile(context, t, dragging: true)),
+            ),
+            childWhenDragging: Opacity(opacity: 0.35, child: _taskTile(context, t)),
+            child: _taskTile(context, t),
+          ),
+        ],
       ),
-      childWhenDragging: Opacity(opacity: 0.35, child: _taskTile(context, t)),
-      child: _taskTile(context, t),
     );
   }
 
@@ -291,7 +333,13 @@ class _KanbanPageState extends ConsumerState<KanbanPage> {
                       children: [
                         _priorityChip(context, t.priority),
                         if (due != null)
-                          Text('Hạn ${DateFormat('dd/MM').format(due)}', style: textTheme.labelSmall),
+                          Text(
+                            'Hạn ${DateFormat('dd/MM').format(due)}',
+                            style: textTheme.labelSmall?.copyWith(
+                              color: dueColor(context, dueStateOf(t)),
+                              fontWeight: dueStateOf(t) == DueState.overdue ? FontWeight.bold : null,
+                            ),
+                          ),
                       ],
                     ),
                   ],

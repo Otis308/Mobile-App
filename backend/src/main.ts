@@ -7,7 +7,6 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  app.enableCors();
   const config = app.get(ConfigService);
   app.setGlobalPrefix('api');
   app.enableCors({ origin: (config.get<string>('CORS_ORIGINS') ?? '*').split(',').map((v:string) => v.trim()), credentials: true });

@@ -9,6 +9,7 @@ import 'features/calendar/presentation/calendar_page.dart';
 import 'features/dashboard/presentation/dashboard_page.dart';
 import 'features/profile/presentation/profile_page.dart';
 import 'features/projects/presentation/projects_page.dart';
+import 'core/realtime/realtime_sync.dart';
 
 class WorkflowApp extends ConsumerWidget {
   const WorkflowApp({super.key});
@@ -48,7 +49,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(child: _pages[_index]),
+      body: SafeArea(child: RealtimeSync(child: _pages[_index])),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),

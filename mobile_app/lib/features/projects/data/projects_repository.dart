@@ -12,12 +12,25 @@ class ProjectsRepository {
     return asMapList(r.data).map(ProjectModel.fromJson).toList();
   }
 
-  Future<ProjectModel> create(String name, String description) async {
+  Future<ProjectModel> create(String name, String description, {String? color}) async {
     final r = await api.dio.post('/projects', data: {
       'name': name,
       if (description.isNotEmpty) 'description': description,
+      if (color != null) 'color': color,
     });
     return ProjectModel.fromJson(asMap(r.data));
+  }
+
+  Future<void> update(String id, {String? name, String? description, String? color}) async {
+    await api.dio.put('/projects/$id', data: {
+      if (name != null) 'name': name,
+      if (description != null) 'description': description,
+      if (color != null) 'color': color,
+    });
+  }
+
+  Future<void> delete(String id) async {
+    await api.dio.delete('/projects/$id');
   }
 
   Future<ProjectModel> get(String id) async {
@@ -32,5 +45,13 @@ class ProjectsRepository {
 
   Future<void> addMember(String projectId, String userId, String role) async {
     await api.dio.post('/projects/$projectId/members', data: {'userId': userId, 'role': role});
+  }
+
+  Future<void> updateMemberRole(String projectId, String userId, String role) async {
+    await api.dio.patch('/projects/$projectId/members/$userId', data: {'role': role});
+  }
+
+  Future<void> removeMember(String projectId, String userId) async {
+    await api.dio.delete('/projects/$projectId/members/$userId');
   }
 }

@@ -13,6 +13,8 @@ export class Task {
   @Prop() dueDate?: Date;
   @Prop({ default: 0 }) order!: number;
   @Prop({ type: [String], default: [] }) labels!: string[];
+  @Prop({ type: Date, default: null }) completedAt?: Date | null;
+  @Prop({ default: false }) dueReminderSent!: boolean;
 }
 export const TaskSchema = SchemaFactory.createForClass(Task);
 TaskSchema.index({ projectId: 1, status: 1, order: 1 });

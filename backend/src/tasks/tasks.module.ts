@@ -6,4 +6,23 @@ import { TasksController, ProjectTasksController } from './tasks.controller';
 import { ProjectsModule } from '../projects/projects.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RealtimeModule } from '../realtime/realtime.module';
-@Module({ imports:[MongooseModule.forFeature([{name:Task.name,schema:TaskSchema}]), forwardRef(()=>ProjectsModule), NotificationsModule, forwardRef(()=>RealtimeModule)], controllers:[TasksController,ProjectTasksController], providers:[TasksService], exports:[TasksService,MongooseModule] }) export class TasksModule {}
+import { DeadlineReminderService } from './deadline-reminder.service';
+
+@Module({
+  imports: [
+    MongooseModule.forFeature([{ name: Task.name, schema: TaskSchema }]),
+    forwardRef(() => ProjectsModule),
+    NotificationsModule,
+    forwardRef(() => RealtimeModule),
+  ],
+  controllers: [
+    TasksController, 
+    ProjectTasksController
+  ],
+  providers: [TasksService,DeadlineReminderService],
+  exports: [
+    TasksService, 
+    MongooseModule
+  ],
+})
+export class TasksModule {}

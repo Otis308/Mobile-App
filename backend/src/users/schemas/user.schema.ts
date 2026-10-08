@@ -20,6 +20,7 @@ export class User {
   @Prop({ default: null }) resetPasswordExpires?: Date;
   
   @Prop({ default: null }) lastPasswordReset?: Date;
+  @Prop({ default: 0 }) resetOtpAttempts!: number;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

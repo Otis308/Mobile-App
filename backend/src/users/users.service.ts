@@ -55,13 +55,17 @@ export class UsersService {
   // 7. CẬP NHẬT HỒ SƠ CÁ NHÂN
   // (Cho phép người dùng sửa thông tin của chính mình)
   async updateProfile(id: string, dto: UpdateProfileDto) {
-    try { 
-      const updated = await this.model.findByIdAndUpdate(id, dto, { new: true, runValidators: true }).select('_id email username fullName role avatarUrl').lean(); 
-      if (!updated) throw new NotFoundException('Không tìm thấy người dùng'); 
-      return updated; 
-    } catch { 
-      throw new BadRequestException('Không thể cập nhật thông tin. Username có thể đã tồn tại.'); 
+    let updated;
+    try {
+      updated = await this.model
+        .findByIdAndUpdate(id, dto, { new: true, runValidators: true })
+        .select('_id email username fullName role avatarUrl').lean();
+    } catch (e: any) {
+      if (e?.code === 11000) throw new BadRequestException('Username đã tồn tại');
+      throw new BadRequestException('Không thể cập nhật thông tin');
     }
+    if (!updated) throw new NotFoundException('Không tìm thấy người dùng');
+    return updated;
   }
 
   // 8. CẬP NHẬT ẢNH ĐẠI DIỆN
@@ -103,11 +107,15 @@ export class UsersService {
       resetPasswordExpires: expires,
     });
   }
+  async incOtpAttempts(userId: string) {
+    await this.model.findByIdAndUpdate(userId, { $inc: { resetOtpAttempts: 1 } });
+  }
 
   // 14. [QUÊN MẬT KHẨU] ĐỔI MẬT KHẨU MỚI
   // (Lưu mật khẩu mới và xóa trắng mã OTP để không bị dùng lại)
   async updatePasswordAndClearOtp(userId: string, passwordHash: string) {
     return this.model.findByIdAndUpdate(userId, {
+      resetOtpAttempts: 0,
       passwordHash: passwordHash,
       resetPasswordOtp: null,
       resetPasswordExpires: null,

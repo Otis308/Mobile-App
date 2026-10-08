@@ -10,6 +10,7 @@ import '../../projects/presentation/project_dialogs.dart';
 import '../../tasks/presentation/kanban_page.dart';
 import '../../team/presentation/team_page.dart';
 import '../data/dashboard_providers.dart';
+import '../../tasks/presentation/task_detail_page.dart';
 
 class DashboardPage extends ConsumerWidget {
   const DashboardPage({super.key});
@@ -153,25 +154,63 @@ class DashboardPage extends ConsumerWidget {
           shrinkWrap: true,
           padding: const EdgeInsets.all(18),
           children: [
-            Text('Thông báo', style: Theme.of(sheet).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            if (items.isEmpty) const Text('Chưa có thông báo.'),
-            for (final n in items)
-              ListTile(
-                leading: Icon(n['isRead'] == true ? Icons.notifications_none : Icons.notifications_active_outlined),
-                title: Text((n['message'] ?? '').toString()),
-                subtitle: Text(_formatTime(n['createdAt'])),
-                onTap: n['isRead'] == true
-                    ? null
-                    : () async {
-                        try {
-                          await ref.read(dashboardRepositoryProvider).markRead(n['_id'].toString());
-                          ref.invalidate(notificationsProvider);
-                          ref.invalidate(dashboardProvider);
-                        } catch (_) {}
-                        if (sheet.mounted) Navigator.of(sheet).pop();
-                      },
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Thông báo', style: Theme.of(sheet).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                if (items.any((n) => n['isRead'] != true))
+                  TextButton(
+                    onPressed: () async {
+                      try {
+                        await ref.read(dashboardRepositoryProvider).markAllRead();
+                        ref.invalidate(notificationsProvider);
+                        ref.invalidate(dashboardProvider);
+                      } catch (_) {}
+                      if (sheet.mounted) Navigator.of(sheet).pop();
+                    },
+                    child: const Text('Đọc tất cả'),
+                  ),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+            
+            if (items.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 10),
+                child: Text('Không có thông báo nào.'),
+              )
+            else
+              for (final n in items)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    n['type'] == 'COMMENT' ? Icons.comment : Icons.notifications,
+                    color: n['isRead'] == true ? Colors.grey : Colors.blue,
+                  ),
+                  title: Text((n['message'] ?? '').toString()),
+                  subtitle: Text(_formatTime(n['createdAt'])),
+                  
+                  // ĐÂY CHÍNH LÀ ĐOẠN CODE ONTAP TRONG HÌNH ẢNH
+                  onTap: () async {
+                    final link = (n['link'] ?? '').toString();
+                    if (n['isRead'] != true) {
+                      try {
+                        await ref.read(dashboardRepositoryProvider).markRead(n['_id'].toString());
+                        ref.invalidate(notificationsProvider);
+                        ref.invalidate(dashboardProvider);
+                      } catch (_) {}
+                    }
+                    if (sheet.mounted) Navigator.of(sheet).pop();
+                    if (link.startsWith('/tasks/') && context.mounted) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => TaskDetailPage(taskId: link.substring('/tasks/'.length)),
+                        ),
+                      );
+                    }
+                  },
+                ),
           ],
         ),
       ),

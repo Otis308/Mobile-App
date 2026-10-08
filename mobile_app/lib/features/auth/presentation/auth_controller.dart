@@ -4,6 +4,7 @@ import '../../../core/errors/app_exception.dart';
 import '../../../core/providers.dart';
 import '../data/auth_repository.dart';
 import '../domain/entities/user.dart';
+import '../../../core/realtime/presence_provider.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>(
   (ref) => AuthRepository(ref.read(apiClientProvider), ref.read(tokenStorageProvider)),
@@ -99,6 +100,7 @@ class AuthController extends Notifier<AuthState> {
 
   Future<void> logout() async {
     await _repo.logout();
+    ref.invalidate(presenceProvider);
     state = const AuthState();
   }
 
