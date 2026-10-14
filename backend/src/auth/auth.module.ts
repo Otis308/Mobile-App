@@ -1,24 +1,30 @@
+// File: backend/src/auth/auth.module.ts
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { MailerModule } from '@nestjs-modules/mailer';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { UsersModule } from '../users/users.module';
-import { MailerModule } from '@nestjs-modules/mailer';
-@Module({ 
-    imports: [
-        UsersModule,
-        MailerModule.forRoot({
+
+@Module({
+  imports: [
+    UsersModule,
+    MailerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
         transport: {
-            host: process.env.SMTP_HOST,
-            port: Number(process.env.SMTP_PORT) || 587,
-            secure: false, 
-            auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS, 
-            },
+          host: config.get<string>('SMTP_HOST', 'smtp.gmail.com'),
+          port: Number(config.get<string>('SMTP_PORT', '587')),
+          secure: false,
+          auth: {
+            user: config.get<string>('SMTP_USER'),
+            pass: config.get<string>('SMTP_PASS'),
+          },
         },
-        }),
-    ], 
-    controllers: [AuthController], 
-    providers: [AuthService],
+      }),
+    }),
+  ],
+  controllers: [AuthController],
+  providers: [AuthService],
 })
 export class AuthModule {}

@@ -12,7 +12,6 @@ import '../utils/json_utils.dart';
 import '../widgets/async_states.dart';
 import 'presence_provider.dart';
 
-/// Lắng nghe sự kiện realtime toàn app và làm mới dữ liệu liên quan.
 class RealtimeSync extends ConsumerStatefulWidget {
   final Widget child;
 
@@ -25,13 +24,19 @@ class RealtimeSync extends ConsumerStatefulWidget {
 class _RealtimeSyncState extends ConsumerState<RealtimeSync> {
   StreamSubscription<RealtimeEvent>? _sub;
   Timer? _debounce;
-  bool _tasksDirty = false;
+  bool _allTasksDirty = false;
   bool _projectsDirty = false;
+  final Set<String> _dirtyProjectIds = {};
 
   @override
   void initState() {
     super.initState();
-    _sub = ref.read(socketServiceProvider).events.listen(_onEvent);
+    final socket = ref.read(socketServiceProvider);
+    _sub = socket.events.listen(_onEvent);
+    // Yêu cầu server gửi lại danh sách online mới nhất ngay khi giao diện chính được dựng xong
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      socket.syncPresence();
+    });
   }
 
   @override
@@ -41,8 +46,11 @@ class _RealtimeSyncState extends ConsumerState<RealtimeSync> {
     super.dispose();
   }
 
-  void _mark({bool tasks = false, bool projects = false}) {
-    _tasksDirty = _tasksDirty || tasks;
+  void _mark({String? projectId, bool tasks = false, bool projects = false}) {
+    if (projectId != null && projectId.isNotEmpty) {
+      _dirtyProjectIds.add(projectId);
+    }
+    _allTasksDirty = _allTasksDirty || tasks;
     _projectsDirty = _projectsDirty || projects;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), _flush);
@@ -52,43 +60,55 @@ class _RealtimeSyncState extends ConsumerState<RealtimeSync> {
     if (!mounted) return;
     if (_projectsDirty) {
       ref.invalidate(projectsProvider);
-      ref.invalidate(projectMembersProvider);
+      for (final pid in _dirtyProjectIds) {
+        ref.invalidate(projectMembersProvider(pid));
+      }
     }
-    if (_tasksDirty || _projectsDirty) {
+    if (_allTasksDirty || _projectsDirty) {
+      if (_dirtyProjectIds.isNotEmpty) {
+        for (final pid in _dirtyProjectIds) {
+          ref.invalidate(tasksProvider(pid));
+        }
+      } else {
+        ref.invalidate(tasksProvider);
+      }
       ref.invalidate(allTasksProvider);
-      ref.invalidate(tasksProvider);
       ref.invalidate(dashboardProvider);
     }
-    _tasksDirty = false;
+    _dirtyProjectIds.clear();
+    _allTasksDirty = false;
     _projectsDirty = false;
   }
 
   void _onEvent(RealtimeEvent e) {
+    final payload = asMap(e.data);
+    final pid = (payload['projectId'] ?? payload['_id'] ?? '').toString();
+
     switch (e.name) {
       case 'presence.update':
-        final m = asMap(e.data);
-        final raw = m['onlineUserIds'];
+        final raw = payload['onlineUserIds'];
         final ids = raw is List ? raw.map((x) => x.toString()).toSet() : <String>{};
-        ref.read(presenceProvider.notifier).setOnline((m['projectId'] ?? '').toString(), ids);
+        ref.read(presenceProvider.notifier).setOnline((payload['projectId'] ?? '').toString(), ids);
         break;
       case 'notification.created':
         ref.invalidate(notificationsProvider);
         ref.invalidate(dashboardProvider);
-        final msg = (asMap(e.data)['message'] ?? '').toString();
+        final msg = (payload['message'] ?? '').toString();
         if (msg.isNotEmpty && mounted) showSnack(context, msg);
         break;
       case 'task.created':
       case 'task.updated':
       case 'task.moved':
       case 'task.deleted':
-        _mark(tasks: true);
+        _mark(projectId: pid, tasks: true);
         break;
       case 'project.updated':
       case 'project.memberAdded':
       case 'project.memberRemoved':
       case 'project.memberUpdated':
       case 'project.deleted':
-        _mark(projects: true);
+        _mark(projectId: pid, projects: true);
+        ref.read(socketServiceProvider).syncPresence(pid);
         break;
       default:
         break;

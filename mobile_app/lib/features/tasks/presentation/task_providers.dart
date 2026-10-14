@@ -1,3 +1,4 @@
+// File: mobile_app/lib/features/tasks/presentation/task_providers.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers.dart';
@@ -27,10 +28,14 @@ final commentsProvider = FutureProvider.autoDispose.family<List<CommentModel>, S
   (ref, taskId) => ref.read(commentsRepositoryProvider).list(taskId),
 );
 
-/// Toàn bộ công việc của mọi dự án (dùng cho trang Lịch).
+/// Lấy toàn bộ công việc của mọi dự án qua 1 request /tasks/mine (kèm fallback nếu backend chưa cập nhật).
 final allTasksProvider = FutureProvider.autoDispose<List<TaskModel>>((ref) async {
-  final projects = await ref.watch(projectsProvider.future);
   final repo = ref.read(tasksRepositoryProvider);
-  final lists = await Future.wait(projects.map((p) => repo.list(p.id)));
-  return [for (final l in lists) ...l];
+  try {
+    return await repo.listMine();
+  } catch (_) {
+    final projects = await ref.watch(projectsProvider.future);
+    final lists = await Future.wait(projects.map((p) => repo.list(p.id)));
+    return [for (final l in lists) ...l];
+  }
 });

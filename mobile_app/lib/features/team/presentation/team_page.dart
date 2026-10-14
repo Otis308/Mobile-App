@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/app_exception.dart';
+import '../../../core/realtime/presence_provider.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/async_states.dart';
 import '../../../core/widgets/labeled_dropdown.dart';
+import '../../auth/presentation/auth_controller.dart';
 import '../../projects/domain/entities/project.dart';
 import '../../projects/presentation/project_providers.dart';
-import 'team_providers.dart';
-import '../../auth/presentation/auth_controller.dart';
 import '../../tasks/domain/entities/task.dart';
 import '../../tasks/presentation/task_providers.dart';
-import '../../../core/realtime/presence_provider.dart';
+import 'team_providers.dart';
 
 const _roleLabels = {'owner': 'Chủ dự án', 'manager': 'Quản lý', 'member': 'Thành viên'};
 int _roleRank(String? r) => r == 'owner' ? 0 : (r == 'manager' ? 1 : 2);
@@ -43,8 +43,6 @@ class _TeamPageState extends ConsumerState<TeamPage> {
     final current = list.isEmpty
         ? null
         : list.firstWhere((p) => p.id == _projectId, orElse: () => list.first);
-    final canInvite =
-        current != null && const {'owner', 'manager'}.contains(current.roleByUser[me]);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Team Workspace')),
@@ -57,13 +55,14 @@ class _TeamPageState extends ConsumerState<TeamPage> {
           return _body(context, items, cur);
         },
       ),
-      floatingActionButton: canInvite
-          ? FloatingActionButton.extended(
-              onPressed: () => _openInvite(current!),
-              icon: const Icon(Icons.person_add_alt_1),
-              label: const Text('Mời thành viên'),
-            )
-          : null,
+      floatingActionButton:
+          current != null && const {'owner', 'manager'}.contains(current.roleByUser[me])
+              ? FloatingActionButton.extended(
+                  onPressed: () => _openInvite(current),
+                  icon: const Icon(Icons.person_add_alt_1),
+                  label: const Text('Mời thành viên'),
+                )
+              : null,
     );
   }
 
@@ -99,13 +98,22 @@ class _TeamPageState extends ConsumerState<TeamPage> {
           ),
           error: (e, _) => Padding(padding: const EdgeInsets.all(12), child: Text(errorMessage(e))),
           data: (items) {
-            final sorted = [...items]..sort((a, b) =>
-                _roleRank(roles[a['_id'].toString()]).compareTo(_roleRank(roles[b['_id'].toString()])));
+            final sorted = [...items]
+              ..sort((a, b) => _roleRank(roles[a['_id'].toString()])
+                  .compareTo(_roleRank(roles[b['_id'].toString()])));
             return Column(
               children: [
                 for (final u in sorted)
-                  _memberTile(context, current, u, roles, myRole, me, openTasks(u['_id'].toString()),
-                    online: onlineIds.contains(u['_id'].toString())),
+                  _memberTile(
+                    context,
+                    current,
+                    u,
+                    roles,
+                    myRole,
+                    me,
+                    openTasks(u['_id'].toString()),
+                    online: onlineIds.contains(u['_id'].toString()),
+                  ),
               ],
             );
           },
@@ -172,7 +180,9 @@ class _TeamPageState extends ConsumerState<TeamPage> {
           if (canRemove || canChangeRole)
             PopupMenuButton<String>(
               onSelected: (v) {
-                if (v == 'role') _changeRole(project, id, role == 'manager' ? 'member' : 'manager');
+                if (v == 'role') {
+                  _changeRole(project, id, role == 'manager' ? 'member' : 'manager');
+                }
                 if (v == 'remove') _remove(project, id, name);
               },
               itemBuilder: (_) => [
@@ -204,12 +214,17 @@ class _TeamPageState extends ConsumerState<TeamPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(self ? 'Rời khỏi dự án?' : 'Xóa thành viên?'),
-        content: Text(self
-            ? 'Bạn sẽ không còn truy cập "${p.name}". Việc đang giao cho bạn sẽ chuyển về "Chưa giao".'
-            : 'Xóa $name khỏi "${p.name}"? Việc đang giao cho họ sẽ chuyển về "Chưa giao".'),
+        content: Text(
+          self
+              ? 'Bạn sẽ không còn truy cập "${p.name}". Việc đang giao cho bạn sẽ chuyển về "Chưa giao".'
+              : 'Xóa $name khỏi "${p.name}"? Việc đang giao cho họ sẽ chuyển về "Chưa giao".',
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Hủy')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(self ? 'Rời nhóm' : 'Xóa')),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(self ? 'Rời nhóm' : 'Xóa'),
+          ),
         ],
       ),
     );
@@ -264,11 +279,12 @@ class _InviteSheetState extends ConsumerState<_InviteSheet> {
       final found = (await ref.read(teamRepositoryProvider).search(q))
           .where((u) => !widget.existingIds.contains(u['_id'].toString()))
           .toList();
-          
+
       if (!mounted) return;
       setState(() {
         _results = found;
-        _message = found.isEmpty ? 'Không tìm thấy người dùng phù hợp (hoặc đã ở trong dự án).' : null;
+        _message =
+            found.isEmpty ? 'Không tìm thấy người dùng phù hợp (hoặc đã ở trong dự án).' : null;
       });
     } catch (e) {
       if (mounted) setState(() => _message = errorMessage(e));
@@ -293,7 +309,9 @@ class _InviteSheetState extends ConsumerState<_InviteSheet> {
     );
     if (role == null || !mounted) return;
     try {
-      await ref.read(projectsRepositoryProvider).addMember(widget.projectId, user['_id'].toString(), role);
+      await ref
+          .read(projectsRepositoryProvider)
+          .addMember(widget.projectId, user['_id'].toString(), role);
       ref.invalidate(projectMembersProvider(widget.projectId));
       if (!mounted) return;
       showSnack(context, 'Đã thêm ${user['fullName']} vào nhóm');

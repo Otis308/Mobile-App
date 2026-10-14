@@ -2,9 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/app_exception.dart';
 import '../../../core/providers.dart';
+import '../../../core/realtime/presence_provider.dart';
 import '../data/auth_repository.dart';
 import '../domain/entities/user.dart';
-import '../../../core/realtime/presence_provider.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>(
   (ref) => AuthRepository(ref.read(apiClientProvider), ref.read(tokenStorageProvider)),
@@ -35,9 +35,11 @@ class AuthController extends Notifier<AuthState> {
     }
     try {
       final user = await _repo.me();
+      ref.read(socketServiceProvider).connect(token);
       state = AuthState(user: user);
     } catch (_) {
       await storage.clear();
+      ref.read(socketServiceProvider).disconnect();
       state = const AuthState();
     }
   }
@@ -50,6 +52,7 @@ class AuthController extends Notifier<AuthState> {
     state = const AuthState(loading: true);
     try {
       final r = await _repo.login(login, password);
+      ref.read(socketServiceProvider).connect(r.token);
       state = AuthState(user: r.user);
     } catch (e) {
       state = AuthState(error: errorMessage(e));
@@ -80,13 +83,13 @@ class AuthController extends Notifier<AuthState> {
         gender,
         password,
       );
+      ref.read(socketServiceProvider).connect(r.token);
       state = AuthState(user: r.user);
     } catch (e) {
       state = AuthState(error: errorMessage(e));
     }
   }
 
-  /// Tải lại thông tin người dùng (sau khi sửa hồ sơ) mà không làm đăng xuất khi lỗi mạng.
   Future<void> refreshUser() async {
     try {
       final user = await _repo.me();
@@ -99,12 +102,20 @@ class AuthController extends Notifier<AuthState> {
   }
 
   Future<void> logout() async {
+    ref.read(socketServiceProvider).disconnect();
     await _repo.logout();
     ref.invalidate(presenceProvider);
     state = const AuthState();
   }
 
-  // Xử lý luồng Quên mật khẩu (Trả về chuỗi lỗi, nếu null là thành công)
+  /// Được gọi từ providers.dart / ApiClient khi token hết hạn (401 Unauthorized)
+  Future<void> sessionExpired() async {
+    ref.read(socketServiceProvider).disconnect();
+    await _repo.logout();
+    ref.invalidate(presenceProvider);
+    state = const AuthState(error: 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
+  }
+
   Future<String?> requestOtp(String email) async {
     try {
       await _repo.requestOtp(email);

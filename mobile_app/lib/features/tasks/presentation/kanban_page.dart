@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -10,9 +8,9 @@ import '../../../core/providers.dart';
 import '../../../core/widgets/async_states.dart';
 import '../../../core/widgets/labeled_dropdown.dart';
 import '../domain/entities/task.dart';
+import 'due_utils.dart';
 import 'task_detail_page.dart';
 import 'task_providers.dart';
-import 'due_utils.dart';
 
 const _statuses = ['todo', 'doing', 'review', 'done'];
 
@@ -38,7 +36,7 @@ class _NewTaskDialogState extends State<_NewTaskDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Tạo công việc'),
+      title: const Text('Tạo công việc mới'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -48,13 +46,13 @@ class _NewTaskDialogState extends State<_NewTaskDialog> {
               autofocus: true,
               decoration: const InputDecoration(labelText: 'Tiêu đề (2-180 ký tự)'),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             TextField(
               controller: _desc,
               maxLines: 3,
-              decoration: const InputDecoration(labelText: 'Mô tả'),
+              decoration: const InputDecoration(labelText: 'Mô tả chi tiết'),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             LabeledDropdown<String>(
               label: 'Độ ưu tiên',
               value: _priority,
@@ -95,37 +93,42 @@ class KanbanPage extends ConsumerStatefulWidget {
 
 class _KanbanPageState extends ConsumerState<KanbanPage> {
   late final SocketService _socket;
-  StreamSubscription<RealtimeEvent>? _sub;
   String? _label;
+  List<TaskModel>? _optimisticTasks;
+
   @override
   void initState() {
     super.initState();
     _socket = ref.read(socketServiceProvider);
-    _sub = _socket.events.listen((event) {
-      if (!mounted) return;
-      if (event.name.startsWith('task.')) {
-        ref.invalidate(tasksProvider(widget.projectId));
-      }
-    });
     _socket.joinProject(widget.projectId);
   }
 
   @override
   void dispose() {
-    _sub?.cancel();
     _socket.leaveProject(widget.projectId);
     super.dispose();
   }
 
-  void _refresh() => ref.invalidate(tasksProvider(widget.projectId));
+  void _refresh() {
+    setState(() => _optimisticTasks = null);
+    ref.invalidate(tasksProvider(widget.projectId));
+  }
 
-  Future<void> _move(TaskModel task, String status, int order) async {
+  Future<void> _move(TaskModel task, String status, int order, List<TaskModel> currentAll) async {
+    final updatedList = [...currentAll];
+    final idx = updatedList.indexWhere((x) => x.id == task.id);
+    if (idx != -1) {
+      updatedList[idx] = task.copyWith(status: status, order: order);
+      setState(() => _optimisticTasks = updatedList);
+    }
+
     try {
       await ref.read(tasksRepositoryProvider).move(task.id, status, order);
     } catch (e) {
       if (mounted) showSnack(context, errorMessage(e));
+    } finally {
+      if (mounted) _refresh();
     }
-    if (mounted) _refresh();
   }
 
   Future<void> _newTask() async {
@@ -157,25 +160,33 @@ class _KanbanPageState extends ConsumerState<KanbanPage> {
 
   @override
   Widget build(BuildContext context) {
-    final tasks = ref.watch(tasksProvider(widget.projectId));
+    final tasksAsync = ref.watch(tasksProvider(widget.projectId));
 
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.projectName),
         actions: [
-          IconButton(
-            tooltip: 'Tạo công việc',
-            onPressed: _newTask,
-            icon: const Icon(Icons.add_task),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilledButton.tonalIcon(
+              onPressed: _newTask,
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Thêm việc'),
+            ),
           ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () => ref.refresh(tasksProvider(widget.projectId).future),
-        child: tasks.when(
+        onRefresh: () async {
+          setState(() => _optimisticTasks = null);
+          ref.invalidate(tasksProvider(widget.projectId));
+          await ref.read(tasksProvider(widget.projectId).future);
+        },
+        child: tasksAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => ErrorView(error: e, onRetry: _refresh),
-          data: (all) {
+          data: (serverTasks) {
+            final all = _optimisticTasks ?? serverTasks;
             final labels = ({for (final t in all) ...t.labels}.toList()..sort());
             return SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -184,19 +195,22 @@ class _KanbanPageState extends ConsumerState<KanbanPage> {
                 children: [
                   if (labels.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                       child: Wrap(
-                        spacing: 8,
+                        spacing: 6,
+                        runSpacing: 6,
                         children: [
                           ChoiceChip(
                             label: const Text('Tất cả'),
                             selected: _label == null,
+                            visualDensity: VisualDensity.compact,
                             onSelected: (_) => setState(() => _label = null),
                           ),
                           for (final l in labels)
                             ChoiceChip(
                               label: Text('#$l'),
                               selected: _label == l,
+                              visualDensity: VisualDensity.compact,
                               onSelected: (_) => setState(() => _label = l),
                             ),
                         ],
@@ -204,10 +218,12 @@ class _KanbanPageState extends ConsumerState<KanbanPage> {
                     ),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(16),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [for (final s in _statuses) _column(context, s, all)],
+                      children: [
+                        for (final s in _statuses) _column(context, s, all),
+                      ],
                     ),
                   ),
                 ],
@@ -220,44 +236,84 @@ class _KanbanPageState extends ConsumerState<KanbanPage> {
   }
 
   Widget _column(BuildContext context, String status, List<TaskModel> all) {
-    // 1. Lấy toàn bộ task thuộc cột này (để tính toán vị trí kéo thả)
     final full = all.where((t) => t.status == status).toList()
       ..sort((a, b) => a.order.compareTo(b.order));
-      
-    // 2. Lọc task để hiển thị (dựa trên _label đang chọn)
+
     final items = _label == null
         ? full
-        : [for (final t in full) if (t.labels.contains(_label)) t];
+        : [
+            for (final t in full)
+              if (t.labels.contains(_label)) t,
+          ];
 
     return DragTarget<TaskModel>(
       onWillAcceptWithDetails: (_) => true,
       onAcceptWithDetails: (d) =>
-          _move(d.data, status, full.where((x) => x.id != d.data.id).length),
+          _move(d.data, status, full.where((x) => x.id != d.data.id).length, all),
       builder: (context, candidate, rejected) {
         final highlight = candidate.isNotEmpty;
         final scheme = Theme.of(context).colorScheme;
-        
+
         return Container(
-          width: 280, // Giữ nguyên các thông số trang trí cũ của bạn
+          width: 284,
+          constraints: const BoxConstraints(minHeight: 160),
           margin: const EdgeInsets.only(right: 12),
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: highlight ? scheme.secondaryContainer : scheme.surfaceContainer,
+            color: highlight
+                ? scheme.primaryContainer.withValues(alpha: 0.35)
+                : scheme.surfaceContainerLow,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: highlight ? scheme.primary : scheme.outlineVariant.withValues(alpha: 0.5),
+              width: highlight ? 1.5 : 1,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.only(bottom: 8.0, left: 4.0),
-                child: Text(
-                  taskStatusLabels[status] ?? status.toUpperCase(), // Thay bằng biến label của bạn nếu có
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      taskStatusLabels[status] ?? status.toUpperCase(),
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '${items.length}',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 10),
-              // Truyền danh sách 'full' vào _draggableCard
-              for (final t in items) _draggableCard(context, t, full), 
+              const SizedBox(height: 8),
+              if (items.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 28),
+                  child: Center(
+                    child: Text(
+                      'Trống',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: scheme.onSurfaceVariant),
+                    ),
+                  ),
+                ),
+              for (final t in items) _draggableCard(context, t, full, all),
             ],
           ),
         );
@@ -265,18 +321,24 @@ class _KanbanPageState extends ConsumerState<KanbanPage> {
     );
   }
 
-  Widget _draggableCard(BuildContext context, TaskModel t, List<TaskModel> full) {
+  Widget _draggableCard(
+    BuildContext context,
+    TaskModel t,
+    List<TaskModel> full,
+    List<TaskModel> all,
+  ) {
     return DragTarget<TaskModel>(
       onWillAcceptWithDetails: (d) => d.data.id != t.id,
       onAcceptWithDetails: (d) {
         final others = full.where((x) => x.id != d.data.id).toList();
-        _move(d.data, t.status, others.indexWhere((x) => x.id == t.id));
+        final targetIndex = others.indexWhere((x) => x.id == t.id);
+        _move(d.data, t.status, targetIndex < 0 ? 0 : targetIndex, all);
       },
       builder: (context, candidate, rejected) => Column(
         children: [
           if (candidate.isNotEmpty)
             Container(
-              height: 4,
+              height: 3,
               margin: const EdgeInsets.only(bottom: 4),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.primary,
@@ -287,27 +349,33 @@ class _KanbanPageState extends ConsumerState<KanbanPage> {
             data: t,
             feedback: Material(
               color: Colors.transparent,
-              child: SizedBox(width: 270, child: _taskTile(context, t, dragging: true)),
+              child: SizedBox(width: 264, child: _taskTile(context, t, all, dragging: true)),
             ),
-            childWhenDragging: Opacity(opacity: 0.35, child: _taskTile(context, t)),
-            child: _taskTile(context, t),
+            childWhenDragging: Opacity(opacity: 0.3, child: _taskTile(context, t, all)),
+            child: _taskTile(context, t, all),
           ),
         ],
       ),
     );
   }
 
-  Widget _taskTile(BuildContext context, TaskModel t, {bool dragging = false}) {
+  Widget _taskTile(
+    BuildContext context,
+    TaskModel t,
+    List<TaskModel> all, {
+    bool dragging = false,
+  }) {
     final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
     final due = t.due;
 
     return Card(
-      elevation: dragging ? 6 : null,
+      elevation: dragging ? 4 : 0,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: dragging ? null : () => _openTask(t),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -315,30 +383,51 @@ class _KanbanPageState extends ConsumerState<KanbanPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(t.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(
+                      t.title,
+                      style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                    ),
                     if (t.description.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.only(top: 5),
+                        padding: const EdgeInsets.only(top: 4),
                         child: Text(
                           t.description,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: textTheme.bodySmall,
+                          style: textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                         ),
                       ),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 6,
+                      runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         _priorityChip(context, t.priority),
                         if (due != null)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.schedule_rounded,
+                                size: 12,
+                                color: dueColor(context, dueStateOf(t)),
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                DateFormat('dd/MM').format(due),
+                                style: textTheme.labelSmall?.copyWith(
+                                  color: dueColor(context, dueStateOf(t)),
+                                  fontWeight:
+                                      dueStateOf(t) == DueState.overdue ? FontWeight.w700 : null,
+                                ),
+                              ),
+                            ],
+                          ),
+                        for (final l in t.labels.take(2))
                           Text(
-                            'Hạn ${DateFormat('dd/MM').format(due)}',
-                            style: textTheme.labelSmall?.copyWith(
-                              color: dueColor(context, dueStateOf(t)),
-                              fontWeight: dueStateOf(t) == DueState.overdue ? FontWeight.bold : null,
-                            ),
+                            '#$l',
+                            style: textTheme.labelSmall?.copyWith(color: scheme.primary),
                           ),
                       ],
                     ),
@@ -348,8 +437,8 @@ class _KanbanPageState extends ConsumerState<KanbanPage> {
               if (!dragging)
                 PopupMenuButton<String>(
                   tooltip: 'Chuyển trạng thái',
-                  icon: const Icon(Icons.more_vert, size: 20),
-                  onSelected: (status) => _move(t, status, 9999),
+                  icon: Icon(Icons.more_horiz_rounded, size: 18, color: scheme.onSurfaceVariant),
+                  onSelected: (status) => _move(t, status, 9999, all),
                   itemBuilder: (_) => [
                     for (final s in _statuses)
                       if (s != t.status)
@@ -368,15 +457,34 @@ class _KanbanPageState extends ConsumerState<KanbanPage> {
 
   Widget _priorityChip(BuildContext context, String p) {
     final scheme = Theme.of(context).colorScheme;
+    final Color bg;
+    final Color fg;
+    switch (p) {
+      case 'urgent':
+        bg = scheme.errorContainer;
+        fg = scheme.onErrorContainer;
+        break;
+      case 'high':
+        bg = Colors.orange.withValues(alpha: 0.15);
+        fg = Colors.orange.shade800;
+        break;
+      default:
+        bg = scheme.surfaceContainerHighest;
+        fg = scheme.onSurfaceVariant;
+    }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(999),
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         taskPriorityLabels[p] ?? p,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onPrimaryContainer),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: fg,
+              fontWeight: FontWeight.w600,
+              fontSize: 10,
+            ),
       ),
     );
   }

@@ -7,6 +7,7 @@ import '../storage/token_storage.dart';
 class ApiClient {
   final Dio dio;
   final TokenStorage storage;
+  void Function()? onUnauthorized;
 
   ApiClient(this.storage)
       : dio = Dio(
@@ -29,6 +30,13 @@ class ApiClient {
           handler.next(options);
         },
         onError: (error, handler) {
+          final status = error.response?.statusCode;
+          final path = error.requestOptions.path;
+          if (status == 401 &&
+              !path.startsWith('/auth/') &&
+              error.requestOptions.headers.containsKey('Authorization')) {
+            onUnauthorized?.call();
+          }
           handler.reject(
             DioException(
               requestOptions: error.requestOptions,

@@ -10,6 +10,7 @@ import 'features/dashboard/presentation/dashboard_page.dart';
 import 'features/profile/presentation/profile_page.dart';
 import 'features/projects/presentation/projects_page.dart';
 import 'core/realtime/realtime_sync.dart';
+final _navKey = GlobalKey<NavigatorState>();
 
 class WorkflowApp extends ConsumerWidget {
   const WorkflowApp({super.key});
@@ -17,10 +18,13 @@ class WorkflowApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authenticated = ref.watch(authControllerProvider.select((s) => s.isAuthenticated));
-
+    ref.listen<bool>(authControllerProvider.select((s) => s.isAuthenticated), (prev, next) {
+      if (prev == true && next == false) _navKey.currentState?.popUntil((r) => r.isFirst);
+    });
     return MaterialApp(
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
+      navigatorKey: _navKey,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: ThemeMode.system,

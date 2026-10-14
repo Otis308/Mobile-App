@@ -11,8 +11,8 @@ import '../../../core/widgets/async_states.dart';
 import '../../../core/widgets/labeled_dropdown.dart';
 import '../../projects/presentation/project_providers.dart';
 import '../domain/entities/task.dart';
-import 'task_providers.dart';
 import 'edit_task_dialog.dart';
+import 'task_providers.dart';
 
 class TaskDetailPage extends ConsumerStatefulWidget {
   final String taskId;
@@ -29,30 +29,40 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
   StreamSubscription<RealtimeEvent>? _sub;
   bool _sending = false;
   String? _joined;
+
   @override
   void initState() {
     super.initState();
     _socket = ref.read(socketServiceProvider);
     _sub = _socket.events.listen((event) {
       if (!mounted) return;
-      if (event.name == 'comment.created') {
-        final data = event.data;
+      final data = event.data;
+      if (event.name == 'comment.created' || event.name == 'comment.deleted') {
         if (data is Map && data['taskId']?.toString() == widget.taskId) {
           ref.invalidate(commentsProvider(widget.taskId));
         }
       } else if (event.name == 'task.updated' || event.name == 'task.moved') {
-        ref.invalidate(taskProvider(widget.taskId));
+        if (data is Map && (data['_id'] ?? data['taskId'])?.toString() == widget.taskId) {
+          ref.invalidate(taskProvider(widget.taskId));
+        }
       }
     });
+  }
+
+  void _ensureJoinedProject(String projectId) {
+    if (_joined == projectId || projectId.isEmpty) return;
+    if (_joined != null) _socket.leaveProject(_joined!);
+    _joined = projectId;
+    _socket.joinProject(projectId);
   }
 
   @override
   void dispose() {
     _sub?.cancel();
     _comment.dispose();
-    super.dispose();
     final id = _joined;
     if (id != null) _socket.leaveProject(id);
+    super.dispose();
   }
 
   Future<void> _send() async {
@@ -82,11 +92,16 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
     );
     if (date == null || !mounted) return;
     try {
-      // Hạn chót đặt lúc 17:00 giờ địa phương.
       final due = DateTime(date.year, date.month, date.day, 17);
-      await ref.read(tasksRepositoryProvider).update(t.id, {'dueDate': due.toUtc().toIso8601String()});
+      await ref.read(tasksRepositoryProvider).update(t.id, {
+        'dueDate': due.toUtc().toIso8601String(),
+        if (t.updatedAt != null) 'expectedUpdatedAt': t.updatedAt,
+      });
       ref.invalidate(taskProvider(widget.taskId));
-      if (mounted) showSnack(context, 'Đã cập nhật hạn ${DateFormat('dd/MM/yyyy').format(due)}');
+      ref.invalidate(allTasksProvider);
+      if (mounted) {
+        showSnack(context, 'Đã cập nhật hạn ${DateFormat('dd/MM/yyyy').format(due)}');
+      }
     } catch (e) {
       if (mounted) showSnack(context, errorMessage(e));
     }
@@ -94,8 +109,12 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
 
   Future<void> _clearDate(TaskModel t) async {
     try {
-      await ref.read(tasksRepositoryProvider).update(t.id, {'dueDate': null});
+      await ref.read(tasksRepositoryProvider).update(t.id, {
+        'dueDate': null,
+        if (t.updatedAt != null) 'expectedUpdatedAt': t.updatedAt,
+      });
       ref.invalidate(taskProvider(widget.taskId));
+      ref.invalidate(allTasksProvider);
       if (mounted) showSnack(context, 'Đã xóa hạn chót');
     } catch (e) {
       if (mounted) showSnack(context, errorMessage(e));
@@ -105,7 +124,6 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
   Future<void> _changeStatus(TaskModel t, String status) async {
     if (status == t.status) return;
     try {
-      // order lớn để thẻ xuống cuối cột đích.
       await ref.read(tasksRepositoryProvider).move(t.id, status, 9999);
       ref.invalidate(taskProvider(widget.taskId));
     } catch (e) {
@@ -125,6 +143,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
     );
     if (data == null) return;
     try {
+      if (t.updatedAt != null) {
+        data['expectedUpdatedAt'] = t.updatedAt;
+      }
       await ref.read(tasksRepositoryProvider).update(t.id, data);
       ref.invalidate(taskProvider(widget.taskId));
       if (mounted) showSnack(context, 'Đã cập nhật công việc');
@@ -178,8 +199,12 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
       ),
       body: task.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(taskProvider(widget.taskId))),
-        data: (t) => _content(context, t),
+        error: (e, _) =>
+            ErrorView(error: e, onRetry: () => ref.invalidate(taskProvider(widget.taskId))),
+        data: (t) {
+          _ensureJoinedProject(t.projectId);
+          return _content(context, t);
+        },
       ),
     );
   }
@@ -188,9 +213,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
     final textTheme = Theme.of(context).textTheme;
     final due = t.due;
     final members = ref.watch(projectMembersProvider(t.projectId)).valueOrNull ??
-      const <Map<String, dynamic>>[];
-    final assignee =
-      members.where((m) => m['_id'].toString() == t.assigneeId).firstOrNull;
+        const <Map<String, dynamic>>[];
+    final assignee = members.where((m) => m['_id'].toString() == t.assigneeId).firstOrNull;
 
     return ListView(
       padding: const EdgeInsets.all(18),
@@ -230,7 +254,11 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.event_outlined),
           title: const Text('Hạn chót'),
-          subtitle: Text(due == null ? 'Chưa đặt (chạm để chọn)' : DateFormat('dd/MM/yyyy HH:mm').format(due)),
+          subtitle: Text(
+            due == null
+                ? 'Chưa đặt (chạm để chọn)'
+                : DateFormat('dd/MM/yyyy HH:mm').format(due),
+          ),
           trailing: due == null
               ? null
               : IconButton(

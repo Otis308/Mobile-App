@@ -1,25 +1,23 @@
+// File: mobile_app/lib/core/constants/app_constants.dart
 class AppConstants {
   AppConstants._();
 
   static const appName = 'WorkFlow';
 
-  /// Có thể ghi đè khi build:
-  /// flutter build apk --dart-define=API_BASE_URL=https://example.com/api
   static const apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    //Sử dụng cho render
+    // Để mặc định là Render để khi GitHub Actions build APK các máy điện thoại dùng chung được ngay
     defaultValue: 'https://mobile-app-u103.onrender.com/api',
-    //Sử dụng cho local
-    //defaultValue: 'http://localhost:3000/api',
+    // Khi test ở máy local bằng F5 thì tạm đổi thành:
+    // defaultValue: 'http://localhost:3000/api',
   );
 
-  /// Socket.IO của backend nằm ở namespace `/realtime`.
-  static const socketUrl = String.fromEnvironment(
-    'SOCKET_URL',
-    defaultValue: 'https://mobile-app-u103.onrender.com/realtime',
-  );
+  static const _envSocketUrl = String.fromEnvironment('SOCKET_URL');
 
-  /// Địa chỉ gốc của server (dùng để ghép đường dẫn ảnh `/uploads/...`).
+  /// Tự động lấy cùng host với apiBaseUrl + '/realtime'
+  static String get socketUrl =>
+      _envSocketUrl.isNotEmpty ? _envSocketUrl : '$serverOrigin/realtime';
+
   static String get serverOrigin {
     var base = apiBaseUrl;
     while (base.endsWith('/')) {

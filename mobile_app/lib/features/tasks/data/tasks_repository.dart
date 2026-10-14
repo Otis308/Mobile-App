@@ -12,6 +12,11 @@ class TasksRepository {
     return asMapList(r.data).map(TaskModel.fromJson).toList();
   }
 
+  Future<List<TaskModel>> listMine() async {
+    final r = await api.dio.get('/tasks/mine');
+    return asMapList(r.data).map(TaskModel.fromJson).toList();
+  }
+
   Future<TaskModel> create(String projectId, Map<String, dynamic> data) async {
     final r = await api.dio.post('/projects/$projectId/tasks', data: data);
     return TaskModel.fromJson(asMap(r.data));

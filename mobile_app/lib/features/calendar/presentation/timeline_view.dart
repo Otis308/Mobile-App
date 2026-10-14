@@ -18,9 +18,9 @@ class TimelineView extends StatefulWidget {
 }
 
 class _TimelineViewState extends State<TimelineView> {
-  static const double _dayW = 40;
-  static const double _rowH = 34;
-  static const double _tailW = 220; // chỗ trống bên phải để hiện tên công việc
+  static const double _dayW = 42;
+  static const double _rowH = 38;
+  static const double _tailW = 240;
   static const _wd = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
   final _scroll = ScrollController();
@@ -53,7 +53,7 @@ class _TimelineViewState extends State<TimelineView> {
         physics: const AlwaysScrollableScrollPhysics(),
         children: const [
           SizedBox(height: 120),
-          Center(child: Text('Chưa có công việc nào có deadline.')),
+          Center(child: Text('Chưa có công việc nào được đặt hạn chót.')),
         ],
       );
     }
@@ -115,8 +115,8 @@ class _TimelineViewState extends State<TimelineView> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Đỏ: quá hạn  •  Cam: hạn hôm nay  •  Xanh lá: hoàn tất',
-          style: Theme.of(context).textTheme.bodySmall,
+          'Đỏ: quá hạn • Cam: hạn hôm nay • Xanh lá: hoàn tất',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
         ),
         const SizedBox(height: 12),
         SingleChildScrollView(
@@ -131,17 +131,22 @@ class _TimelineViewState extends State<TimelineView> {
                   children: [
                     Row(
                       children: [
-                        for (var i = 0; i < totalDays; i++) _tick(context, _addDays(first, i), today),
+                        for (var i = 0; i < totalDays; i++)
+                          _tick(context, _addDays(first, i), today),
                       ],
                     ),
-                    for (final t in tasks) _row(context, t, byId[t.projectId], first, totalDays, chartW),
+                    const SizedBox(height: 4),
+                    for (final t in tasks)
+                      _row(context, t, byId[t.projectId], first, totalDays, chartW),
                   ],
                 ),
                 Positioned(
                   left: _days(first, today) * _dayW + _dayW / 2 - 1,
                   top: 0,
                   bottom: 0,
-                  child: Container(width: 2, color: scheme.primary.withAlpha(120)),
+                  child: IgnorePointer(
+                    child: Container(width: 1.5, color: scheme.primary.withValues(alpha: 0.45)),
+                  ),
                 ),
               ],
             ),
@@ -161,7 +166,8 @@ class _TimelineViewState extends State<TimelineView> {
       decoration: BoxDecoration(
         color: isToday
             ? scheme.primaryContainer
-            : (weekend ? scheme.onSurface.withAlpha(12) : null),
+            : (weekend ? scheme.surfaceContainerHighest.withValues(alpha: 0.4) : null),
+        borderRadius: isToday ? BorderRadius.circular(8) : null,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -169,14 +175,24 @@ class _TimelineViewState extends State<TimelineView> {
           Text(_wd[d.weekday - 1], style: const TextStyle(fontSize: 10)),
           Text(
             d.day == 1 ? '1/${d.month}' : '${d.day}',
-            style: TextStyle(fontSize: 12, fontWeight: isToday ? FontWeight.bold : FontWeight.w500),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _row(BuildContext context, TaskModel t, ProjectModel? p, DateTime first, int totalDays, double chartW) {
+  Widget _row(
+    BuildContext context,
+    TaskModel t,
+    ProjectModel? p,
+    DateTime first,
+    int totalDays,
+    double chartW,
+  ) {
     final s = _start(t);
     final e = DateUtils.dateOnly(t.due!);
     final startIdx = math.max(0, _days(first, s));
@@ -193,6 +209,8 @@ class _TimelineViewState extends State<TimelineView> {
     }
 
     final label = p == null ? t.title : '${p.name} • ${t.title}';
+    final showInside = width >= 140;
+
     return SizedBox(
       height: _rowH,
       width: chartW,
@@ -208,25 +226,43 @@ class _TimelineViewState extends State<TimelineView> {
                 MaterialPageRoute<void>(builder: (_) => TaskDetailPage(taskId: t.id)),
               ),
               child: Container(
-                decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                alignment: Alignment.centerLeft,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: showInside
+                    ? Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      )
+                    : null,
               ),
             ),
           ),
-          Positioned(
-            left: startIdx * _dayW + width + 4,
-            top: 0,
-            bottom: 0,
-            width: 200,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelMedium,
+          if (!showInside)
+            Positioned(
+              left: startIdx * _dayW + width + 6,
+              top: 0,
+              bottom: 0,
+              width: 220,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
